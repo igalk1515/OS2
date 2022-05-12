@@ -16,10 +16,12 @@ forktest(void)
 {
   int n, pid;
 
-  print("fork test\n");
+   print("fork test\n");
 
   for(n=0; n<N; n++){
+     //print("before fork");
     pid = fork();
+    // print("after fork");
     if(pid < 0)
       break;
     if(pid == 0)

@@ -46,7 +46,7 @@ forktest(void)
   3a:	1800                	addi	s0,sp,48
   int n, pid;
 
-  print("fork test\n");
+   print("fork test\n");
   3c:	00001517          	auipc	a0,0x1
   40:	89c50513          	addi	a0,a0,-1892 # 8d8 <malloc+0xe4>
   44:	00000097          	auipc	ra,0x0
