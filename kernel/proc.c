@@ -9,6 +9,7 @@
 struct cpu cpus[CPUS];
 
 int print_flag = 0;
+int counter_blance = 0;
 
 struct proc proc[NPROC];
 
@@ -129,6 +130,34 @@ add_proc2(struct proc* p, int number, int parent_cpu)
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 int init = 0;
 
+int
+get_lazy_cpu(){
+  int curr_min = 0;
+  for(int i=1; i<CPUS; i++){
+    curr_min = (cpus[i].queue_size < cpus[curr_min].queue_size) ? i : curr_min;
+  }
+  return curr_min;
+}
+
+void
+increase_size(int cpu_id){
+  struct cpu* c = &cpus[cpu_id];
+  uint64 old;
+  do{
+    old = c->queue_size;
+  } while(cas(&c->queue_size, old, old+1));
+}
+
+
+void
+decrease_size(int cpu_id){
+  struct cpu* c = &cpus[cpu_id];
+  uint64 old;
+  do{
+    old = c->queue_size;
+  } while(cas(&c->queue_size, old, old-1));
+}
+
 int 
 set_cpu(int cpu_num)
 {
@@ -136,7 +165,9 @@ set_cpu(int cpu_num)
     return -1;
   }
   struct proc* p = myproc();
+  decrease_size(p->parent_cpu);
   p->parent_cpu=cpu_num;
+  increase_size(cpu_num);
   yield();
   return cpu_num;
 }
@@ -605,6 +636,7 @@ userinit(void)
     struct cpu* c;
     for(c = cpus; c < &cpus[CPUS]; c++){
       c->first = 0;
+      BLNCFLG ?  c->queue_size = 0:counter_blance++;
     }
     init = 1;
   }
@@ -629,8 +661,12 @@ userinit(void)
   p->state = RUNNABLE;
 //------------------------------------------------
   p->parent_cpu = 0;
+//------------------------------------------------PART 4 ------------------------------------------------
+  increase_size(p->parent_cpu);
+//------------------------------------------------PART 4 ------------------------------------------------
   cpus[p->parent_cpu].first = p;
 //------------------------------------------------
+
 
   release(&p->lock);
 }
@@ -706,9 +742,13 @@ fork(void)
   // np->parent_cpu = p->parent_cpu; // give the proces cpu id of padrant  
   // add_proc(np, 1, p->parent_cpu); // add new proces to the list of ready 
 
-  int parent_cpu =  p->parent_cpu;
-  np->parent_cpu = parent_cpu;
-  add_proc_to_list(np, READYL, parent_cpu);
+
+ 
+//------------------------------------------------PART 4 ------------------------------------------------
+    int cpu_id = (BLNCFLG) ? get_lazy_cpu() : p->parent_cpu;
+//------------------------------------------------PART 4 ------------------------------------------------
+  np->parent_cpu = cpu_id;
+  add_proc_to_list(np, READYL, cpu_id);
 
   release(&np->lock);
 
@@ -767,6 +807,8 @@ exit(int status)
 
   p->xstate = status;
   p->state = ZOMBIE;
+
+  decrease_size(p->parent_cpu);
   //-----------------------------------------------------
   add_proc_to_list(p, ZOMBIEL, -1);
   //-----------------------------------------------------
@@ -840,14 +882,14 @@ scheduler(void)
   if(!BLNCFLG){
     if(!print_flag){
       print_flag++;
-      printf("BLNCFLG=OFF\n");
+      printf("BLNCFLG is OFF\n");
     }
     blncflag_off();
   }
   else{
       if(!print_flag){
       print_flag++;
-      printf("BLNCFLG=ON\n");
+      printf("BLNCFLG is ON\n");
       }
     blncflag_on();
   }
@@ -860,35 +902,37 @@ blncflag_on(void)
   struct proc *p;
   struct cpu *c = mycpu();
   int cpu_id = cpuid();
-
+  
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-    //-------------------------------------------------------------------------------------------------------
     p = remove_first(READYL, cpu_id);
-    if(!p){ // no proces ready 
-      continue;
+
+    //if empty list
+    if(!p){
+      if(!BLNCFLG){
+        continue;
+      }
+      if(!p){ 
+        continue;
+      }
+      decrease_size(p->parent_cpu);
+      p->parent_cpu = cpu_id;
+      increase_size(cpu_id);
     }
+    acquire(&p->lock);
 
-    //-------------------------------------------------------------------------------------------------------=
-      acquire(&p->lock);
-    //-------------------------------------------------------------------------------------------------------=
-      if(p->state != RUNNABLE)
-        panic("bad proc was selected");
-    //-------------------------------------------------------------------------------------------------------=
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-      release(&p->lock);
+    if(p->state!=RUNNABLE)
+      panic("bad proc was selected");
+  
+    p->state = RUNNING;
+    c->proc = p;
+    
+    swtch(&c->context, &p->context);
+  
+    c->proc = 0;
+    release(&p->lock);
   }
 }
 
@@ -908,7 +952,6 @@ blncflag_off(void)
     if(!p){ // no proces ready 
       continue;
     }
-
     //-------------------------------------------------------------------------------------------------------=
       acquire(&p->lock);
     //-------------------------------------------------------------------------------------------------------=
@@ -1013,6 +1056,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
+  decrease_size(p->parent_cpu);
   //--------------------------------------------------------------------
     add_proc_to_list(p, SLEEPINGL,-1);
   //--------------------------------------------------------------------
@@ -1053,8 +1097,9 @@ wakeup(void *chan)
 
         //add to runnable
         tmp->state = RUNNABLE;
-        int cpu_id = tmp->parent_cpu;
+        int cpu_id = (BLNCFLG) ? get_lazy_cpu() : tmp->parent_cpu;
         tmp->parent_cpu = cpu_id;
+        increase_size(cpu_id);
         add_proc_to_list(tmp, READYL, cpu_id);
         release(&tmp->list_lock);
         release(&tmp->lock);
@@ -1064,8 +1109,9 @@ wakeup(void *chan)
         prev->next = p->next;
         p->next = 0;
         p->state = RUNNABLE;
-        int cpu_id = p->parent_cpu;
+        int cpu_id = (BLNCFLG) ? get_lazy_cpu() : p->parent_cpu;
         p->parent_cpu = cpu_id;
+        increase_size(cpu_id);
         add_proc_to_list(p, READYL, cpu_id);
         release(&p->list_lock);
         release(&p->lock);
@@ -1112,6 +1158,7 @@ kill(int pid)
         p->state = RUNNABLE;
         remove_proc(p, SLEEPINGL);
         add_proc_to_list(p, READYL, p->parent_cpu);
+        increase_size(p->parent_cpu);
       }
       release(&p->lock);
       return 0;

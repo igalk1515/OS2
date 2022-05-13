@@ -35,6 +35,7 @@ struct processList {
 
 // Per-CPU state.
 struct cpu {
+  uint64 queue_size;
   struct proc *proc;          // The process running on this cpu, or null.
   struct context context;     // swtch() here to enter scheduler().
   int noff;                   // Depth of push_off() nesting.
