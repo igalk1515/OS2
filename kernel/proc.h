@@ -1,3 +1,11 @@
+#define OFF 0
+#define ON 1
+
+#ifndef BLNCFLG
+#define BLNCFLG OFF
+#endif
+
+
 // Saved registers for kernel context switches.
 struct context {
   uint64 ra;

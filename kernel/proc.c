@@ -8,6 +8,8 @@
 
 struct cpu cpus[CPUS];
 
+int print_flag = 0;
+
 struct proc proc[NPROC];
 
 struct proc *initproc;
@@ -295,10 +297,10 @@ add_proc_to_list(struct proc* p, int type, int cpu_id)
 struct proc* 
 remove_first(int type, int cpu_id)
 {
-  acquire_list(type, cpu_id);
-  struct proc* head = get_head(type, cpu_id);
+  acquire_list(type, cpu_id);//acquire lock
+  struct proc* head = get_head(type, cpu_id);//aquire list after we have loock 
   if(!head){
-    release_list(type, cpu_id);
+    release_list(type, cpu_id);//realese loock 
   }
   else{
     acquire(&head->list_lock);
@@ -307,7 +309,7 @@ remove_first(int type, int cpu_id)
     head->next = 0;
     release(&head->list_lock);
 
-    release_list(type, cpu_id);
+    release_list(type, cpu_id);//realese loock 
 
   }
   return head;
@@ -835,6 +837,26 @@ wait(uint64 addr)
 void
 scheduler(void)
 {
+  if(!BLNCFLG){
+    if(!print_flag){
+      print_flag++;
+      printf("BLNCFLG=OFF\n");
+    }
+    blncflag_off();
+  }
+  else{
+      if(!print_flag){
+      print_flag++;
+      printf("BLNCFLG=ON\n");
+      }
+    blncflag_on();
+  }
+
+}
+
+void
+blncflag_on(void)
+{
   struct proc *p;
   struct cpu *c = mycpu();
   int cpu_id = cpuid();
@@ -868,6 +890,45 @@ scheduler(void)
         c->proc = 0;
       release(&p->lock);
   }
+}
+
+void
+blncflag_off(void)
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+  int cpu_id = cpuid();
+
+  c->proc = 0;
+  for(;;){
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+    //-------------------------------------------------------------------------------------------------------
+    p = remove_first(READYL, cpu_id);
+    if(!p){ // no proces ready 
+      continue;
+    }
+
+    //-------------------------------------------------------------------------------------------------------=
+      acquire(&p->lock);
+    //-------------------------------------------------------------------------------------------------------=
+      if(p->state != RUNNABLE)
+        panic("bad proc was selected");
+    //-------------------------------------------------------------------------------------------------------=
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+
+        p->state = RUNNING;
+        c->proc = p;
+        swtch(&c->context, &p->context);
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      release(&p->lock);
+  }
+
 }
 
 // Switch to scheduler.  Must hold only p->lock
