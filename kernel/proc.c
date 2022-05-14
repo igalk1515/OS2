@@ -293,7 +293,7 @@ add_proc_to_specific_list(struct proc* p, int type, int cpu_id)
   struct proc* current;
   getList(type, cpu_id);//get the corect list for proc state
   current = getFirst(type, cpu_id);
-  if(!current){// set first in list
+  if(!current){// if the list empty so current is first 
     setFirst(p, type, cpu_id);
     release_list(type, cpu_id);
   }
@@ -315,15 +315,11 @@ add_proc_to_specific_list(struct proc* p, int type, int cpu_id)
   }
 }
 
-
-
-
-
 struct proc* 
 remove_first(int type, int cpu_id)
 {
-  getList(type, cpu_id);//acquire lock
-  struct proc* head = getFirst(type, cpu_id);//aquire list after we have loock 
+  getList(type, cpu_id);//acquire lock for the list 
+  struct proc* head = getFirst(type, cpu_id);//aquire the first in the list
   if(!head){
     release_list(type, cpu_id);//realese loock 
   }
