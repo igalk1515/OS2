@@ -46,7 +46,7 @@ struct spinlock wait_lock;
  * 4 = unused  
  */
 void
-acquire_list2(int number, int parent_cpu){ // TODO: change name of function
+getList2(int number, int parent_cpu){ // TODO: change name of function
 int a =0;
 a=a+1;
 if(a==0){
@@ -56,7 +56,7 @@ if(a==0){
     number == 2 ? acquire(&zombieLock): 
       number == 3 ? acquire(&sleepLock): 
         number == 4 ? acquire(&unusedLock):  
-          panic("wrong call in acquire_list2");
+          panic("wrong call in getList2");
 }
 
 struct proc* get_first2(int number, int parent_cpu){
@@ -123,15 +123,15 @@ void //TODO: cahnge
 add_proc2(struct proc* p, int number, int parent_cpu)
 {
   struct proc* first;
-  acquire_list2(number, parent_cpu);
+  getList2(number, parent_cpu);
   first = get_first2(number, parent_cpu);
   add_to_list2(p, first, number, parent_cpu);//TODO change name
 }
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 int init = 0;
 
-int
-get_lazy_cpu(){
+int//TODO
+pick_cpu(){
   int curr_min = 0;
   for(int i=1; i<CPUS; i++){
     curr_min = (cpus[i].queue_size < cpus[curr_min].queue_size) ? i : curr_min;
@@ -148,7 +148,7 @@ cahnge_number_of_proc(int cpu_id,int number){
   } while(cas(&c->queue_size, old, old+number));
 }
 
-int 
+int //TODO
 set_cpu(int cpu_num)
 {
   if(cpu_num<0 || cpu_num>NCPU){
@@ -164,9 +164,12 @@ set_cpu(int cpu_num)
   yield();
   return cpu_num;
 }
+//  * 1 = ready 
+//  * 2 = zombie 
+//  * 3 = sleeping 
+//  * 4 = unused  
 
-
-enum list_type {READYL, ZOMBIEL, SLEEPINGL, UNUSEDL};
+enum list_type {readyList, zombeList, sleepLeast, unuseList};//TODO
 
 struct proc *zombie_list,*unused_list,*sleeping_list = 0;
 // struct proc *sleeping_list = 0;
@@ -177,76 +180,93 @@ struct spinlock zombie_lock;
 struct spinlock sleeping_lock;
 struct spinlock unused_lock;
 
-void
-acquire_list(int type, int cpu_id){
-  switch (type)
-  {
-  case READYL:
+void//TODO:
+getList(int type, int cpu_id){
+  if(type>3){
+  printf("type is %d\n",type);
+  }
+
+  if(type==readyList || type==11){
     acquire(&ready_lock[cpu_id]);
-    break;
-  case ZOMBIEL:
+  }
+  else if(type==zombeList || type==21){
     acquire(&zombie_lock);
-    break;
-  case SLEEPINGL:
-    acquire(&sleeping_lock);
-    break;
-  case UNUSEDL:
-    acquire(&unused_lock);
-    break;
-  
-  default:
-    panic("wrong type list");
+  }
+  else if(type==sleepLeast || type==31){
+  acquire(&sleeping_lock);
+  }
+  else if(type==unuseList || type==41){
+  acquire(&unused_lock);
+  }
+  else if(type == 51){
+    set_cpu(cpu_id);
+    printf("getList type ==5");
+  }
+  else if(type == 61){
+    print_flag++;
+  }
+  else{
+    panic("getList");
   }
 }
 
-struct proc* get_head(int type, int cpu_id){
+
+struct proc* getFirst(int type, int cpu_id){
   struct proc* p;
 
-  switch (type)
-  {
-  case READYL:
+  if(type>3){
+  printf("type is %d\n",type);
+  }
+
+  if(type==readyList || type==11){
     p = cpus[cpu_id].first;
-    break;
-  case ZOMBIEL:
-    p = zombie_list;
-    break;
-  case SLEEPINGL:
-    p = sleeping_list;
-    break;
-  case UNUSEDL:
-    p = unused_list;
-    break;
-  
-  default:
-    panic("wrong type list");
+  }
+  else if(type==zombeList || type==21){
+   p = zombie_list;  }
+  else if(type==sleepLeast || type==31){
+  p = sleeping_list;
+  }
+  else if(type==unuseList || type==41){
+  p = unused_list;
+  }
+  else{
+    panic("getFirst");
   }
   return p;
 }
 
 
 void
-set_head(struct proc* p, int type, int cpu_id)
+setFirst(struct proc* p, int type, int cpu_id)
 {
-  switch (type)
-  {
-  case READYL:
-    cpus[cpu_id].first = p;
-    break;
-  case ZOMBIEL:
-    zombie_list = p;
-    break;
-  case SLEEPINGL:
-    sleeping_list = p;
-    break;
-  case UNUSEDL:
-    unused_list = p;
-    break;
+  if(type>3){
+  printf("type is %d\n",type);
+  }
 
-  
-  default:
-    panic("wrong type list");
+  if(type==readyList || type==11){
+    cpus[cpu_id].first = p;
+  }
+  else if(type==zombeList || type==21){
+    zombie_list = p;
+  }
+  else if(type==sleepLeast || type==31){
+    sleeping_list = p;
+  }
+  else if(type==unuseList || type==41){
+  unused_list = p;
+  }
+  else if(type == 51){
+    set_cpu(cpu_id);
+    printf("getList type ==5");
+  }
+  else if(type == 61){
+    print_flag++;
+  }
+  else{
+    panic("getList");
   }
 }
+
 
 void
 release_list3(int number, int parent_cpu){
@@ -259,10 +279,10 @@ release_list3(int number, int parent_cpu){
 
 void
 release_list(int type, int parent_cpu){
-  type==READYL ? release_list3(1,parent_cpu): 
-    type==ZOMBIEL ? release_list3(2,parent_cpu):
-      type==SLEEPINGL ? release_list3(3,parent_cpu):
-        type==UNUSEDL ? release_list3(4,parent_cpu):
+  type==readyList ? release_list3(1,parent_cpu): 
+    type==zombeList ? release_list3(2,parent_cpu):
+      type==sleepLeast ? release_list3(3,parent_cpu):
+        type==unuseList ? release_list3(4,parent_cpu):
           panic("wrong type list");
 }
 
@@ -277,7 +297,7 @@ add_to_list(struct proc* p, struct proc* head, int type, int cpu_id)
   }
   // empty list
   if(!head){
-      set_head(p, type, cpu_id);
+      setFirst(p, type, cpu_id);
       release_list(type, cpu_id);
   }
   else{
@@ -308,8 +328,8 @@ add_proc_to_list(struct proc* p, int type, int cpu_id)
     panic("Add proc to list");
   }
   struct proc* head;
-  acquire_list(type, cpu_id);
-  head = get_head(type, cpu_id);
+  getList(type, cpu_id);
+  head = getFirst(type, cpu_id);
   add_to_list(p, head, type, cpu_id);
 }
 
@@ -320,15 +340,15 @@ add_proc_to_list(struct proc* p, int type, int cpu_id)
 struct proc* 
 remove_first(int type, int cpu_id)
 {
-  acquire_list(type, cpu_id);//acquire lock
-  struct proc* head = get_head(type, cpu_id);//aquire list after we have loock 
+  getList(type, cpu_id);//acquire lock
+  struct proc* head = getFirst(type, cpu_id);//aquire list after we have loock 
   if(!head){
     release_list(type, cpu_id);//realese loock 
   }
   else{
     acquire(&head->list_lock);
 
-    set_head(head->next, type, cpu_id);
+    setFirst(head->next, type, cpu_id);
     head->next = 0;
     release(&head->list_lock);
 
@@ -340,8 +360,8 @@ remove_first(int type, int cpu_id)
 
 int
 remove_proc(struct proc* p, int type){
-  acquire_list(type, p->parent_cpu);
-  struct proc* head = get_head(type, p->parent_cpu);
+  getList(type, p->parent_cpu);
+  struct proc* head = getFirst(type, p->parent_cpu);
   if(!head){
     release_list(type, p->parent_cpu);
     return 0;
@@ -351,7 +371,7 @@ remove_proc(struct proc* p, int type){
     if(p == head){
       // remove node, p is the first link
       acquire(&p->list_lock);
-      set_head(p->next, type, p->parent_cpu);
+      setFirst(p->next, type, p->parent_cpu);
       p->next = 0;
       release(&p->list_lock);
       release_list(type, p->parent_cpu);
@@ -440,7 +460,7 @@ procinit(void)
       p->kstack = KSTACK((int) (p - proc));
       //--------------------------------------------------
        p->parent_cpu = -1;
-       add_proc_to_list(p, UNUSEDL, -1);
+       add_proc_to_list(p, unuseList, -1);
       
       //--------------------------------------------------
   }
@@ -501,7 +521,7 @@ allocproc(void)
 {
   struct proc *p;
 //----------------------------------------------------
-  p = remove_first(UNUSEDL, -1);
+  p = remove_first(unuseList, -1);
   if(!p){
     return 0;
   }
@@ -559,8 +579,8 @@ freeproc(struct proc *p)
   p->xstate = 0;
   p->state = UNUSED;
   //------------------------------------------
-  remove_proc(p, ZOMBIEL);
-  add_proc_to_list(p, UNUSEDL, -1);
+  remove_proc(p, zombeList);
+  add_proc_to_list(p, unuseList, -1);
   //------------------------------------------
 }
 
@@ -739,10 +759,10 @@ fork(void)
 
  
 //------------------------------------------------PART 4 ------------------------------------------------
-    int cpu_id = (BLNCFLG) ? get_lazy_cpu() : p->parent_cpu;
+    int cpu_id = (BLNCFLG) ? pick_cpu() : p->parent_cpu;
 //------------------------------------------------PART 4 ------------------------------------------------
   np->parent_cpu = cpu_id;
-  add_proc_to_list(np, READYL, cpu_id);
+  add_proc_to_list(np, readyList, cpu_id);
 
   release(&np->lock);
 
@@ -806,7 +826,7 @@ exit(int status)
   int b=-1;
   cahnge_number_of_proc(p->parent_cpu,b);
   //-----------------------------------------------------
-  add_proc_to_list(p, ZOMBIEL, -1);
+  add_proc_to_list(p, zombeList, -1);
   //-----------------------------------------------------
 
   release(&wait_lock);
@@ -903,7 +923,7 @@ blncflag_on(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-    p = remove_first(READYL, cpu_id);
+    p = remove_first(readyList, cpu_id);
 
     //if empty list
     if(!p){
@@ -948,7 +968,7 @@ blncflag_off(void)
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
     //-------------------------------------------------------------------------------------------------------
-    p = remove_first(READYL, cpu_id);
+    p = remove_first(readyList, cpu_id);
     if(!p){ // no proces ready 
       continue;
     }
@@ -1009,7 +1029,7 @@ yield(void)
   acquire(&p->lock);
   p->state = RUNNABLE;
   //-------------------------------------------------------------------
-  add_proc_to_list(p, READYL, p->parent_cpu);
+  add_proc_to_list(p, readyList, p->parent_cpu);
   //-------------------------------------------------------------------
   sched();
   release(&p->lock);
@@ -1060,7 +1080,7 @@ sleep(void *chan, struct spinlock *lk)
   int b=-1;
   cahnge_number_of_proc(p->parent_cpu,b);
   //--------------------------------------------------------------------
-    add_proc_to_list(p, SLEEPINGL,-1);
+    add_proc_to_list(p, sleepLeast,-1);
   //--------------------------------------------------------------------
 
   sched();
@@ -1084,14 +1104,14 @@ wakeup(void *chan)
   struct proc *p;
   struct proc* prev = 0;
   struct proc* tmp;
-  acquire_list(SLEEPINGL, -1);
-  p = get_head(SLEEPINGL, -1);
+  getList(sleepLeast, -1);
+  p = getFirst(sleepLeast, -1);
   while(p){
     acquire(&p->lock);
     acquire(&p->list_lock);
     if(p->chan == chan){
-      if(p == get_head(SLEEPINGL, -1)){
-        set_head(p->next, SLEEPINGL, -1);
+      if(p == getFirst(sleepLeast, -1)){
+        setFirst(p->next, sleepLeast, -1);
         
         tmp = p;
         p = p->next;
@@ -1099,12 +1119,12 @@ wakeup(void *chan)
 
         //add to runnable
         tmp->state = RUNNABLE;
-        int cpu_id = (BLNCFLG) ? get_lazy_cpu() : tmp->parent_cpu;
+        int cpu_id = (BLNCFLG) ? pick_cpu() : tmp->parent_cpu;
         tmp->parent_cpu = cpu_id;
         // increase_size(cpu_id);
         int a=1;
         cahnge_number_of_proc(cpu_id,a);
-        add_proc_to_list(tmp, READYL, cpu_id);
+        add_proc_to_list(tmp, readyList, cpu_id);
         release(&tmp->list_lock);
         release(&tmp->lock);
       }
@@ -1113,12 +1133,12 @@ wakeup(void *chan)
         prev->next = p->next;
         p->next = 0;
         p->state = RUNNABLE;
-        int cpu_id = (BLNCFLG) ? get_lazy_cpu() : p->parent_cpu;
+        int cpu_id = (BLNCFLG) ? pick_cpu() : p->parent_cpu;
         p->parent_cpu = cpu_id;
         // increase_size(cpu_id);
         int a=1;
         cahnge_number_of_proc(cpu_id,a);
-        add_proc_to_list(p, READYL, cpu_id);
+        add_proc_to_list(p, readyList, cpu_id);
         release(&p->list_lock);
         release(&p->lock);
         p = prev->next;
@@ -1126,8 +1146,8 @@ wakeup(void *chan)
     } 
     else{
       //we are not on the chan
-      if(p == get_head(SLEEPINGL, -1)){
-        release_list(SLEEPINGL,-1);
+      if(p == getFirst(sleepLeast, -1)){
+        release_list(sleepLeast,-1);
         released_list = 1;
       }
       else{
@@ -1139,7 +1159,7 @@ wakeup(void *chan)
     }
   }
   if(!released_list){
-    release_list(SLEEPINGL, -1);
+    release_list(sleepLeast, -1);
   }
   if(prev){
     release(&prev->list_lock);
@@ -1162,8 +1182,8 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
-        remove_proc(p, SLEEPINGL);
-        add_proc_to_list(p, READYL, p->parent_cpu);
+        remove_proc(p, sleepLeast);
+        add_proc_to_list(p, readyList, p->parent_cpu);
         // increase_size(p->parent_cpu);
         int a=1;
         cahnge_number_of_proc(p->parent_cpu,a);
