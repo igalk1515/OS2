@@ -140,22 +140,12 @@ get_lazy_cpu(){
 }
 
 void
-increase_size(int cpu_id){
+cahnge_number_of_proc(int cpu_id,int number){
   struct cpu* c = &cpus[cpu_id];
   uint64 old;
   do{
     old = c->queue_size;
-  } while(cas(&c->queue_size, old, old+1));
-}
-
-
-void
-decrease_size(int cpu_id){
-  struct cpu* c = &cpus[cpu_id];
-  uint64 old;
-  do{
-    old = c->queue_size;
-  } while(cas(&c->queue_size, old, old-1));
+  } while(cas(&c->queue_size, old, old+number));
 }
 
 int 
@@ -165,20 +155,22 @@ set_cpu(int cpu_num)
     return -1;
   }
   struct proc* p = myproc();
-  decrease_size(p->parent_cpu);
+  int b=-1;
+  cahnge_number_of_proc(p->parent_cpu,b);
   p->parent_cpu=cpu_num;
-  increase_size(cpu_num);
+  int positive=1;
+  cahnge_number_of_proc(cpu_num,positive);
+  // increase_size(cpu_num);
   yield();
   return cpu_num;
 }
 
 
-
 enum list_type {READYL, ZOMBIEL, SLEEPINGL, UNUSEDL};
 
-struct proc *zombie_list = 0;
-struct proc *sleeping_list = 0;
-struct proc *unused_list = 0;
+struct proc *zombie_list,*unused_list,*sleeping_list = 0;
+// struct proc *sleeping_list = 0;
+// struct proc *unused_list = 0;
 
 struct spinlock ready_lock[CPUS];
 struct spinlock zombie_lock;
@@ -662,7 +654,9 @@ userinit(void)
 //------------------------------------------------
   p->parent_cpu = 0;
 //------------------------------------------------PART 4 ------------------------------------------------
-  increase_size(p->parent_cpu);
+  // increase_size(p->parent_cpu);
+  int a=1;
+  cahnge_number_of_proc(p->parent_cpu,a);
 //------------------------------------------------PART 4 ------------------------------------------------
   cpus[p->parent_cpu].first = p;
 //------------------------------------------------
@@ -808,7 +802,9 @@ exit(int status)
   p->xstate = status;
   p->state = ZOMBIE;
 
-  decrease_size(p->parent_cpu);
+  // decrease_size(p->parent_cpu);
+  int b=-1;
+  cahnge_number_of_proc(p->parent_cpu,b);
   //-----------------------------------------------------
   add_proc_to_list(p, ZOMBIEL, -1);
   //-----------------------------------------------------
@@ -917,9 +913,13 @@ blncflag_on(void)
       if(!p){ 
         continue;
       }
-      decrease_size(p->parent_cpu);
+      // decrease_size(p->parent_cpu);
+      int b=-1;
+      cahnge_number_of_proc(p->parent_cpu,b);
       p->parent_cpu = cpu_id;
-      increase_size(cpu_id);
+      // increase_size(cpu_id);
+      int a=1;
+      cahnge_number_of_proc(cpu_id,a);
     }
     acquire(&p->lock);
 
@@ -1056,7 +1056,9 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-  decrease_size(p->parent_cpu);
+  // decrease_size(p->parent_cpu);
+  int b=-1;
+  cahnge_number_of_proc(p->parent_cpu,b);
   //--------------------------------------------------------------------
     add_proc_to_list(p, SLEEPINGL,-1);
   //--------------------------------------------------------------------
@@ -1099,7 +1101,9 @@ wakeup(void *chan)
         tmp->state = RUNNABLE;
         int cpu_id = (BLNCFLG) ? get_lazy_cpu() : tmp->parent_cpu;
         tmp->parent_cpu = cpu_id;
-        increase_size(cpu_id);
+        // increase_size(cpu_id);
+        int a=1;
+        cahnge_number_of_proc(cpu_id,a);
         add_proc_to_list(tmp, READYL, cpu_id);
         release(&tmp->list_lock);
         release(&tmp->lock);
@@ -1111,7 +1115,9 @@ wakeup(void *chan)
         p->state = RUNNABLE;
         int cpu_id = (BLNCFLG) ? get_lazy_cpu() : p->parent_cpu;
         p->parent_cpu = cpu_id;
-        increase_size(cpu_id);
+        // increase_size(cpu_id);
+        int a=1;
+        cahnge_number_of_proc(cpu_id,a);
         add_proc_to_list(p, READYL, cpu_id);
         release(&p->list_lock);
         release(&p->lock);
@@ -1158,7 +1164,9 @@ kill(int pid)
         p->state = RUNNABLE;
         remove_proc(p, SLEEPINGL);
         add_proc_to_list(p, READYL, p->parent_cpu);
-        increase_size(p->parent_cpu);
+        // increase_size(p->parent_cpu);
+        int a=1;
+        cahnge_number_of_proc(p->parent_cpu,a);
       }
       release(&p->lock);
       return 0;
