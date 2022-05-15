@@ -685,7 +685,6 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
-//------------------------------------------------
   p->parent_cpu = 0;
 //------------------------------------------------PART 4 ------------------------------------------------
   // increase_size(p->parent_cpu);
@@ -693,7 +692,6 @@ userinit(void)
   BLNCFLG ?cahnge_number_of_proc(p->parent_cpu,a):counter_blance++;
 //------------------------------------------------PART 4 ------------------------------------------------
   cpus[p->parent_cpu].first = p;
-//------------------------------------------------
 
 
   release(&p->lock);
@@ -773,13 +771,30 @@ fork(void)
 
  
 //------------------------------------------------PART 4 ------------------------------------------------
-    int cpu_id = (BLNCFLG) ? pick_cpu() : p->parent_cpu;
+    int parent_cpu =  p->parent_cpu;
+    if(BLNCFLG){
+      int min = 0;
+      int cpuNumber=0;
+      for(int i=1; i<CPUS; i++){
+        if(min==-1 || min > cpus[i].queue_size){
+          cpuNumber = i;
+          min = cpus[i].queue_size;
+        }
+        if(BLNCFLG){
+          continue;
+        }
+      }
+      if(min==-31 || cpuNumber==-31){
+        panic("fork in BLNCFLG");
+      }
+      parent_cpu = cpuNumber;
+    }
 //------------------------------------------------PART 4 ------------------------------------------------
-  np->parent_cpu = cpu_id;
-  add_proc_to_specific_list(np, readyList, cpu_id,0);
-
+  np->parent_cpu = parent_cpu;
+  add_proc_to_specific_list(np, readyList, parent_cpu,0);
+  int a=1;
+  BLNCFLG ?cahnge_number_of_proc(np->parent_cpu,a):counter_blance++;
   release(&np->lock);
-
   return pid;
 }
 
@@ -937,36 +952,34 @@ blncflag_on(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
+
+
     p = get_first(readyList, cpu_id);
-
     //if empty list
-    if(!p){
-      if(!BLNCFLG){
-        continue;
-      }
-      if(!p){ 
-        continue;
-      }
-      // decrease_size(p->parent_cpu);
-      int b=-1;
-      BLNCFLG ?cahnge_number_of_proc(p->parent_cpu,b):counter_blance++;
-      p->parent_cpu = cpu_id;
-      // increase_size(cpu_id);
-      int a=1;
-      BLNCFLG ?cahnge_number_of_proc(cpu_id,a):counter_blance++;
+    if(!p){ 
+      continue;
     }
-    acquire(&p->lock);
+    else{
+      int b=-1;
+      cahnge_number_of_proc(p->parent_cpu,b);
+      p->parent_cpu = cpu_id;
+      int a=1;
+      cahnge_number_of_proc(cpu_id,a);
+      acquire(&p->lock);
 
-    if(p->state!=RUNNABLE)
-      panic("bad proc was selected");
-  
-    p->state = RUNNING;
-    c->proc = p;
-    
-    swtch(&c->context, &p->context);
-  
-    c->proc = 0;
-    release(&p->lock);
+      if(p->state!=RUNNABLE){
+        panic("blncflag_on");
+      }
+
+      p->state = RUNNING;
+      c->proc = p;
+      
+      swtch(&c->context, &p->context);
+
+      c->proc = 0;
+      release(&p->lock);
+    }
+
   }
 }
 
@@ -990,7 +1003,7 @@ blncflag_off(void)
       acquire(&p->lock);
     //-------------------------------------------------------------------------------------------------------=
       if(p->state != RUNNABLE)
-        panic("bad proc was selected");
+        panic("blncflag_off");
     //-------------------------------------------------------------------------------------------------------=
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
@@ -1090,11 +1103,10 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-  // decrease_size(p->parent_cpu);
+  //--------------------------------------------------------------------
   int b=-1;
   BLNCFLG ?cahnge_number_of_proc(p->parent_cpu,b):counter_blance++;
-  //--------------------------------------------------------------------
-    add_proc_to_specific_list(p, sleepLeast,-1,0);
+  add_proc_to_specific_list(p, sleepLeast,-1,0);
   //--------------------------------------------------------------------
 
   sched();
@@ -1118,27 +1130,45 @@ wakeup(void *chan)
   struct proc *p;
   struct proc* prev = 0;
   struct proc* tmp;
-  getList(sleepLeast, -1);
-  p = getFirst(sleepLeast, -1);
+  getList(sleepLeast, -1);//get lock for list
+  p = getFirst(sleepLeast, -1);//get list 
   while(p){
     acquire(&p->lock);
     acquire(&p->list_lock);
     if(p->chan == chan){
       if(p == getFirst(sleepLeast, -1)){
-        setFirst(p->next, sleepLeast, -1);
-        
+
+        setFirst(p->next, sleepLeast, -1);//delete for sleep
+
         tmp = p;
         p = p->next;
         tmp->next = 0;
 
-        //add to runnable
+        //add to run
         tmp->state = RUNNABLE;
-        int cpu_id = (BLNCFLG) ? pick_cpu() : tmp->parent_cpu;
-        tmp->parent_cpu = cpu_id;
+        int parent_cpu = tmp->parent_cpu;
+        if(BLNCFLG){
+          int min = 0;
+          int cpuNumber=0;
+          for(int i=1; i<CPUS; i++){
+            if(min==-1 || min > cpus[i].queue_size){
+              cpuNumber = i;
+              min = cpus[i].queue_size;
+            }
+            if(BLNCFLG){
+              continue;
+            }
+          }
+          if(min==-31 || cpuNumber==-30){
+            panic("wakeup");
+          }
+          parent_cpu = cpuNumber;
+        }
+        tmp->parent_cpu = parent_cpu;
         // increase_size(cpu_id);
         int a=1;
-        BLNCFLG ?cahnge_number_of_proc(cpu_id,a):counter_blance++;
-        add_proc_to_specific_list(tmp, readyList, cpu_id,0);
+        BLNCFLG ?cahnge_number_of_proc(parent_cpu,a):counter_blance++;
+        add_proc_to_specific_list(tmp, readyList, parent_cpu,0);
         release(&tmp->list_lock);
         release(&tmp->lock);
       }
@@ -1147,12 +1177,30 @@ wakeup(void *chan)
         prev->next = p->next;
         p->next = 0;
         p->state = RUNNABLE;
-        int cpu_id = (BLNCFLG) ? pick_cpu() : p->parent_cpu;
-        p->parent_cpu = cpu_id;
-        // increase_size(cpu_id);
+        int parent_cpu =  p->parent_cpu;
+        //if blance flag is up so pick the cpu with fewer proc's
+        if(BLNCFLG){
+          int min = 0;
+          int cpuNumber=0;
+          for(int i=1; i<CPUS; i++){
+            if(min==-1 || min > cpus[i].queue_size){
+              cpuNumber = i;
+              min = cpus[i].queue_size;
+            }
+            if(BLNCFLG){
+              continue;
+            }
+          }
+          if(min==-31 || cpuNumber==-30){
+            panic("fork in BLNCFLG");
+          }
+          parent_cpu = cpuNumber;
+        }
+        p->parent_cpu = parent_cpu;
+        // increase_size(parent_cpu);
         int a=1;
-        BLNCFLG ?cahnge_number_of_proc(cpu_id,a):counter_blance++;
-        add_proc_to_specific_list(p, readyList, cpu_id,0);
+        BLNCFLG ?cahnge_number_of_proc(parent_cpu,a):counter_blance++;
+        add_proc_to_specific_list(p, readyList, parent_cpu,0);
         release(&p->list_lock);
         release(&p->lock);
         p = prev->next;
