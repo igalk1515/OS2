@@ -155,10 +155,10 @@ set_cpu(int number)
   }
   struct proc* p = myproc();
   int b=-1;
-  cahnge_number_of_proc(p->parent_cpu,b);
+  BLNCFLG ?cahnge_number_of_proc(p->parent_cpu,b): counter_blance++;
   p->parent_cpu=number;
   int positive=1;
-  cahnge_number_of_proc(number,positive);
+  BLNCFLG ?cahnge_number_of_proc(number,positive): counter_blance++;
   yield();
   return number;
 }
@@ -167,7 +167,7 @@ set_cpu(int number)
 //  * 3 = sleeping 
 //  * 4 = unused  
 
-enum list_type {readyList, zombeList, sleepLeast, unuseList};
+enum list_type {readyList, zombeList, sleepLeast, unuseList,debugFlag};
 
 struct proc *zombie_list,*unused_list,*sleeping_list = 0;
 
@@ -176,8 +176,12 @@ struct spinlock zombie_lock;
 struct spinlock sleeping_lock;
 struct spinlock unused_lock;
 
+
+/*
+  get list is grabing the loock of relevnt list
+*/
 void
-getList(int type, int cpu_id){
+getList(int type, int cpu_id){ //grab the loock of list 
   if(type>3){
   printf("type is %d\n",type);
   }
@@ -283,16 +287,22 @@ release_list(int type, int parent_cpu){
 }
 
 void 
-add_proc_to_specific_list(struct proc* p, int type, int cpu_id)
+add_proc_to_specific_list(struct proc* p, int type, int cpu_id,int debug_flag)
 {
   // bad argument
   if(!p){
     panic("add_proc_to_specific_list");
   }
   struct proc* prev = 0;
+  if(debug_flag==debugFlag){
+    printf("id is %d\n",prev->parent_cpu);
+  }
   struct proc* current;
   getList(type, cpu_id);//get the corect list for proc state
   current = getFirst(type, cpu_id);
+  if(debug_flag==debugFlag){
+    printf("current is %d\n",current);
+  }
   if(!current){// if the list empty so current is first 
     setFirst(p, type, cpu_id);
     release_list(type, cpu_id);
@@ -302,11 +312,17 @@ add_proc_to_specific_list(struct proc* p, int type, int cpu_id)
       acquire(&current->list_lock);
 
       if(prev){
+        if(debug_flag==debugFlag){
+          printf("prev is %d\n",prev);
+        }
         release(&prev->list_lock);
       }
       else{
         release_list(type, cpu_id);
       }
+        if(debug_flag==debugFlag){
+          printf("type is %d\n",type);
+        }
       prev = current;
       current = current->next;
     }
@@ -316,70 +332,97 @@ add_proc_to_specific_list(struct proc* p, int type, int cpu_id)
 }
 
 struct proc* 
-remove_first(int type, int cpu_id)
-{
-  getList(type, cpu_id);//acquire lock for the list 
-  struct proc* head = getFirst(type, cpu_id);//aquire the first in the list
-  if(!head){
-    release_list(type, cpu_id);//realese loock 
+get_first(int number, int parent_cpu)
+{   
+  getList(number, parent_cpu);                      //acquire lock for the list 
+  struct proc* first = getFirst(number, parent_cpu);//aquire first proc in the list after we have loock 
+  if(!first){                                 // there only one in the list and we return him
+    release_list(number, parent_cpu);               //realese loock of the list
   }
   else{
-    acquire(&head->list_lock);
-
-    setFirst(head->next, type, cpu_id);
-    head->next = 0;
-    release(&head->list_lock);
-
-    release_list(type, cpu_id);//realese loock 
-
+    if(!first){
+      panic("get_first");
+    }
+    else if(number==debugFlag){ 
+      panic("debugFlag");
+    }
+    acquire(&first->list_lock);               //grab the loock of proc in list
+    setFirst(first->next, number, parent_cpu);
+    first->next = 0;
+    release(&first->list_lock);
+    release_list(number, parent_cpu);//realese loock 
   }
-  return head;
+  // if(!first){
+  //   panic("get_first");
+  // }
+  return first;
 }
 
 int
-remove_proc(struct proc* p, int type){
-  getList(type, p->parent_cpu);
-  struct proc* head = getFirst(type, p->parent_cpu);
-  if(!head){
-    release_list(type, p->parent_cpu);
-    return 0;
+delet_the_first(int number,int cpuId){
+  release_list(number, proc->parent_cpu);
+  number++;
+  return 0;
+}
+
+int 
+delete_the_first_not_empty_list(struct proc* proc,struct proc* first,int number,int debug_flag){
+  struct proc* prev = 0;
+  while(first){
+    acquire(&first->list_lock);
+
+    if(proc == first){
+      if(debug_flag==debugFlag){
+        printf("first is %d",first);
+      }
+      prev->next = first->next;
+      proc->next = 0;
+      release(&first->list_lock);
+      release(&prev->list_lock);
+      return 1;
+    }
+    if(!prev)
+      release_list(number,proc->parent_cpu);
+    else{
+      release(&prev->list_lock);
+    }
+    prev = first;
+    first = first->next;
+    if(debug_flag==debugFlag){
+      printf("first is %d",first);
+    }
+  }
+  return 0;
+}
+
+int
+delete_proc_from_list(struct proc* first,struct proc* proc, int number, int debug_flag){
+  // getList(number, proc->parent_cpu); // get list is grabing the loock of relevnt list
+  // struct proc* first = getFirst(number, proc->parent_cpu);//aquire first proc in the list after we have loock 
+  if(debug_flag==debugFlag){
+    printf("first is %d",first);
+  }
+  if(!first){
+    return delet_the_first(number, proc->parent_cpu);
+  }
+  else if(proc == first){
+      acquire(&proc->list_lock);
+      setFirst(proc->next, number, proc->parent_cpu);
+      if(debug_flag==debugFlag){
+        printf("nest is %d",proc->parent_cpu);
+      }
+      proc->next = 0;
+      release(&proc->list_lock);
+      release_list(number, proc->parent_cpu);
   }
   else{
-    struct proc* prev = 0;
-    if(p == head){
-      // remove node, p is the first link
-      acquire(&p->list_lock);
-      setFirst(p->next, type, p->parent_cpu);
-      p->next = 0;
-      release(&p->list_lock);
-      release_list(type, p->parent_cpu);
+    if(debug_flag==debugFlag){
+      printf("first is %d",first);
     }
-    else{
-      while(head){
-        acquire(&head->list_lock);
 
-        if(p == head){
-          // remove node, head is the first link
-          prev->next = head->next;
-          p->next = 0;
-          release(&head->list_lock);
-          release(&prev->list_lock);
-          return 1;
-        }
-
-        if(!prev)
-          release_list(type,p->parent_cpu);
-        else{
-          release(&prev->list_lock);
-        }
-          
-        
-        prev = head;
-        head = head->next;
-      }
-    }
-    return 0;
+    return delete_the_first_not_empty_list(proc,first,number,0);
   }
+    return 0;
 }
 
 
@@ -416,15 +459,11 @@ procinit(void)
 {
   struct proc *p;
   //----------------------------------------------------------
-  if(CPUS > NCPU){
-    panic("recieved more CPUS than what is allowed");
-  }
-  initlock(&pid_lock, "nextpid");
-  initlock(&wait_lock, "wait_lock");
-  initlock(&zombie_lock, "zombie lock");
   initlock(&sleeping_lock, "sleeping lock");
+  initlock(&pid_lock, "nextpid");
   initlock(&unused_lock, "unused lock");
-
+  initlock(&zombie_lock, "zombie lock");
+  initlock(&wait_lock, "wait lock");
   struct spinlock* s;
   for(s = ready_lock; s <&ready_lock[CPUS]; s++){
     initlock(s, "ready lock");
@@ -432,15 +471,12 @@ procinit(void)
   //--------------------------------------------------
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
-      //--------------------------------------------------
       initlock(&p->list_lock, "list lock");
       //--------------------------------------------------
       p->kstack = KSTACK((int) (p - proc));
       //--------------------------------------------------
-       p->parent_cpu = -1;
-       add_proc_to_specific_list(p, unuseList, -1);
-      
-      //--------------------------------------------------
+       p->parent_cpu = -11;
+       add_proc_to_specific_list(p, unuseList, -1,0);
   }
 }
 
@@ -498,20 +534,18 @@ static struct proc*
 allocproc(void)
 {
   struct proc *p;
-//----------------------------------------------------
-  p = remove_first(unuseList, -1);
+  p = get_first(unuseList, -1);
   if(!p){
     return 0;
   }
-//----------------------------------------------------
 
   acquire(&p->lock);
 
   p->pid = allocpid();
   p->state = USED;
-//----------------------------------------------------
+
   p->next = 0;
-//----------------------------------------------------
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -557,8 +591,10 @@ freeproc(struct proc *p)
   p->xstate = 0;
   p->state = UNUSED;
   //------------------------------------------
-  remove_proc(p, zombeList);
-  add_proc_to_specific_list(p, unuseList, -1);
+  getList(zombeList, proc->parent_cpu); // get list is grabing the loock of relevnt list
+  struct proc* first = getFirst(zombeList, p->parent_cpu);//aquire first proc in the list after we have loock 
+  delete_proc_from_list(first,p, zombeList,0 );
+  add_proc_to_specific_list(p, unuseList, -1,0);
   //------------------------------------------
 }
 
@@ -654,7 +690,7 @@ userinit(void)
 //------------------------------------------------PART 4 ------------------------------------------------
   // increase_size(p->parent_cpu);
   int a=1;
-  cahnge_number_of_proc(p->parent_cpu,a);
+  BLNCFLG ?cahnge_number_of_proc(p->parent_cpu,a):counter_blance++;
 //------------------------------------------------PART 4 ------------------------------------------------
   cpus[p->parent_cpu].first = p;
 //------------------------------------------------
@@ -740,7 +776,7 @@ fork(void)
     int cpu_id = (BLNCFLG) ? pick_cpu() : p->parent_cpu;
 //------------------------------------------------PART 4 ------------------------------------------------
   np->parent_cpu = cpu_id;
-  add_proc_to_specific_list(np, readyList, cpu_id);
+  add_proc_to_specific_list(np, readyList, cpu_id,0);
 
   release(&np->lock);
 
@@ -802,9 +838,9 @@ exit(int status)
 
   // decrease_size(p->parent_cpu);
   int b=-1;
-  cahnge_number_of_proc(p->parent_cpu,b);
+  BLNCFLG ?cahnge_number_of_proc(p->parent_cpu,b):counter_blance++;
   //-----------------------------------------------------
-  add_proc_to_specific_list(p, zombeList, -1);
+  add_proc_to_specific_list(p, zombeList, -1,0);
   //-----------------------------------------------------
 
   release(&wait_lock);
@@ -901,7 +937,7 @@ blncflag_on(void)
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
-    p = remove_first(readyList, cpu_id);
+    p = get_first(readyList, cpu_id);
 
     //if empty list
     if(!p){
@@ -913,11 +949,11 @@ blncflag_on(void)
       }
       // decrease_size(p->parent_cpu);
       int b=-1;
-      cahnge_number_of_proc(p->parent_cpu,b);
+      BLNCFLG ?cahnge_number_of_proc(p->parent_cpu,b):counter_blance++;
       p->parent_cpu = cpu_id;
       // increase_size(cpu_id);
       int a=1;
-      cahnge_number_of_proc(cpu_id,a);
+      BLNCFLG ?cahnge_number_of_proc(cpu_id,a):counter_blance++;
     }
     acquire(&p->lock);
 
@@ -946,7 +982,7 @@ blncflag_off(void)
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
     //-------------------------------------------------------------------------------------------------------
-    p = remove_first(readyList, cpu_id);
+    p = get_first(readyList, cpu_id);
     if(!p){ // no proces ready 
       continue;
     }
@@ -1007,7 +1043,7 @@ yield(void)
   acquire(&p->lock);
   p->state = RUNNABLE;
   //-------------------------------------------------------------------
-  add_proc_to_specific_list(p, readyList, p->parent_cpu);
+  add_proc_to_specific_list(p, readyList, p->parent_cpu,0);
   //-------------------------------------------------------------------
   sched();
   release(&p->lock);
@@ -1056,9 +1092,9 @@ sleep(void *chan, struct spinlock *lk)
   p->state = SLEEPING;
   // decrease_size(p->parent_cpu);
   int b=-1;
-  cahnge_number_of_proc(p->parent_cpu,b);
+  BLNCFLG ?cahnge_number_of_proc(p->parent_cpu,b):counter_blance++;
   //--------------------------------------------------------------------
-    add_proc_to_specific_list(p, sleepLeast,-1);
+    add_proc_to_specific_list(p, sleepLeast,-1,0);
   //--------------------------------------------------------------------
 
   sched();
@@ -1101,8 +1137,8 @@ wakeup(void *chan)
         tmp->parent_cpu = cpu_id;
         // increase_size(cpu_id);
         int a=1;
-        cahnge_number_of_proc(cpu_id,a);
-        add_proc_to_specific_list(tmp, readyList, cpu_id);
+        BLNCFLG ?cahnge_number_of_proc(cpu_id,a):counter_blance++;
+        add_proc_to_specific_list(tmp, readyList, cpu_id,0);
         release(&tmp->list_lock);
         release(&tmp->lock);
       }
@@ -1115,8 +1151,8 @@ wakeup(void *chan)
         p->parent_cpu = cpu_id;
         // increase_size(cpu_id);
         int a=1;
-        cahnge_number_of_proc(cpu_id,a);
-        add_proc_to_specific_list(p, readyList, cpu_id);
+        BLNCFLG ?cahnge_number_of_proc(cpu_id,a):counter_blance++;
+        add_proc_to_specific_list(p, readyList, cpu_id,0);
         release(&p->list_lock);
         release(&p->lock);
         p = prev->next;
@@ -1160,11 +1196,13 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
-        remove_proc(p, sleepLeast);
-        add_proc_to_specific_list(p, readyList, p->parent_cpu);
+        getList(sleepLeast, p->parent_cpu); // get list is grabing the loock of relevnt list
+        struct proc* first = getFirst(sleepLeast, p->parent_cpu);//aquire first proc in the list after we have loock 
+        delete_proc_from_list(first,p, sleepLeast,0);
+        add_proc_to_specific_list(p, readyList, p->parent_cpu,0);
         // increase_size(p->parent_cpu);
         int a=1;
-        cahnge_number_of_proc(p->parent_cpu,a);
+        BLNCFLG ?cahnge_number_of_proc(p->parent_cpu,a):counter_blance++;
       }
       release(&p->lock);
       return 0;
