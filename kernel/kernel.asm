@@ -6365,7 +6365,7 @@ wakeup(void *chan)
         p = prev->next;
     80002ff0:	050a3483          	ld	s1,80(s4)
     80002ff4:	a885                	j	80003064 <wakeup+0x10a>
-        setFirst(p->next, sleepLeast, -1);
+        setFirst(p->next, sleepLeast, -1);//delete for sleep
     80002ff6:	567d                	li	a2,-1
     80002ff8:	4589                	li	a1,2
     80002ffa:	68a8                	ld	a0,80(s1)
